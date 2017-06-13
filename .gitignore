@@ -12,3 +12,4 @@ BCILAB-temp/flushedsets/2682937333.set
 *.fdt
 BCILAB-temp/
 dependencies/BCILAB/dependencies/liblsl-Matlab/mex/build*
+dependencies/BCILAB/dependencies/eeglab13_4_4b/plugins/xdfimport1.13/

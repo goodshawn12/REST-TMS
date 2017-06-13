@@ -20,14 +20,18 @@ clear
 opts.customize_pipeline = true;
 
 % (optional) define config file name
-opts.config = 'Config_ORICA_EmotivEPOC';
+opts.config = 'Config_ORICA_SleepHeadband';
+
+% (optional) channel location file
+load(['data' filesep 'chanlocs' filesep 'SleepHeadband_8_Stream.mat']); 
+opts.chanlocs = chanlocs;
 
 % point to headModel
-opts.headModel = ['data' filesep 'head_models' filesep 'emotivHeadModel_file'];
+% opts.headModel = ['data' filesep 'head_models' filesep 'quick20HeadModel'];
 
 % (optional) path to calibration data and select time window
-opts.calibration_data = ['data' filesep 'Demo_EmotivEPOC_EyeClose.set'];
-opts.calibration_window = [0,60]; % sec
+opts.calibration_data = ['data' filesep 'sleepBand_sample.set'];
+opts.calibration_window = [0,10]; % sec
 
 % use playback data
 opts.playback = 1;
