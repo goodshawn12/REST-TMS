@@ -11,8 +11,8 @@ end
 %% refresh workspace
 % clear all will break bcilab and require it to restart as it uses global
 % variables 
+delete(timerfindall)
 close all
-delete(timerfind)
 clear
 
 %% define opts structure
@@ -33,4 +33,5 @@ opts.calibration_window = [0,60]; % sec
 opts.playback = 1;
 
 %% start REST
-REST(opts)
+% REST(opts)
+REST_TMS(opts)

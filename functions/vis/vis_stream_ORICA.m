@@ -112,19 +112,15 @@ buffername = genvarname(['lsl_' opts.streamname '_stream'],{taken.name});
 buffer = create_streambuffer(opts);
 assignin('base', buffername, buffer);
 
-% create the figure
-create_figure(opts);
-
-% set up a timer that reads from LSL
-th = timer('Period', 1.0/opts.refreshrate,'ExecutionMode','fixedRate','TimerFcn',@on_timer,...
+if ~isempty(opts.axishandles)
+    % create the figure
+    create_figure(opts); 
+    
+    % set up a timer that reads from LSL
+    th = timer('Period', 1.0/opts.refreshrate,'ExecutionMode','fixedRate','TimerFcn',@on_timer,...
     'StartDelay',0.2,'Tag','lsl_visORICAst_timer',...
     'Name','eegTimer','UserData',1);
-
-% th = timer('Period', 1.0/opts.refreshrate,'ExecutionMode','fixedRate','TimerFcn',@on_timer,...
-%     'StartDelay',0.2,'Tag',['lsl_' genvarname(opts.streamname) '_timer'],...
-%     'Name','eegTimer','UserData',0);
-% start(th);
-
+end
 
     % === nested functions (sharing some handles with each other) ===
 
