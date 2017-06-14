@@ -126,13 +126,16 @@ if any(strcmp(funsstr,'flt_selchans'))
     handles.chanlocs(handles.rmchan_index) = [];
     handles.nic = length(handles.chanlocs);
     handles.ics = 1:handles.nic;
-    % adjust headModel
-    handles.urheadModel = handles.headModel;
-    handles.headModel.dropChannels(handles.rmchan_index); % !!! had to change the headModel contructor
-    handles.K(handles.rmchan_index,:) = [];
-%     LFM = load(handles.headModel.leadFieldFile);
-%     LFM.K(handles.rmchan_index,:) = [];
-%     save(handles.headModel.leadFieldFile,'-struct','LFM')
+    
+    if isfield(handles,'headModel')
+        % adjust headModel
+        handles.urheadModel = handles.headModel;
+        handles.headModel.dropChannels(handles.rmchan_index); % !!! had to change the headModel contructor
+        handles.K(handles.rmchan_index,:) = [];
+        %     LFM = load(handles.headModel.leadFieldFile);
+        %     LFM.K(handles.rmchan_index,:) = [];
+        %     save(handles.headModel.leadFieldFile,'-struct','LFM')
+    end
 end
 
 % Populate scalp maps
