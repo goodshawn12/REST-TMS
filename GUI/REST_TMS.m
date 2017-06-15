@@ -103,12 +103,14 @@ if any(strcmp(funsstr,'flt_selchans'))
     handles.nic = length(handles.chanlocs);
     handles.ics = 1:handles.nic;
     % adjust headModel
-    handles.urheadModel = handles.headModel;
-    handles.headModel.dropChannels(handles.rmchan_index); % !!! had to change the headModel contructor
-    handles.K(handles.rmchan_index,:) = [];
-%     LFM = load(handles.headModel.leadFieldFile);
-%     LFM.K(handles.rmchan_index,:) = [];
-%     save(handles.headModel.leadFieldFile,'-struct','LFM')
+    if isfield(handles,'headModel')
+        handles.urheadModel = handles.headModel;
+        handles.headModel.dropChannels(handles.rmchan_index); % !!! had to change the headModel contructor
+        handles.K(handles.rmchan_index,:) = [];
+        %     LFM = load(handles.headModel.leadFieldFile);
+        %     LFM.K(handles.rmchan_index,:) = [];
+        %     save(handles.headModel.leadFieldFile,'-struct','LFM')
+    end
 end
 
 % Populate scalp maps
@@ -468,22 +470,19 @@ try  %#ok<*TRYNC>
     % find index to be updated
     it = mod(get(varargin{1},'TasksExecuted')-1,handles.ntopo)+1;
     hstr = ['axes' int2str(it)];
-    hand = get(handles.(hstr),'children');
 
-    data = data(it,:);
-    
+    data = data(it,:);    
     [data,f] = pwelch(data,[],[],[],srate);
-%     [data,f,conf] =
-%     pwelch(data,[],[],[],srate,'ConfidenceLevel',0.95);!!! incorporate ci and iterative update
     
     maxFreq = 40;
     ind = f <= maxFreq;
-    plot(handles.axes1,f(ind),db(data(ind))) % !!!?
-    grid(handles.axes1,'on');
-%     xlabel(handles.axes1,'Frequency (Hz)')
-%     ylabel(handles.axes1,'Power/Frequency (dB/Hz)')
-    axis(handles.axes1,'tight')
-    set(handles.axes1,'XTick',[0 10:10:f(end)],'box','off')
+    plot(handles.(hstr),f(ind),db(data(ind))) % !!!?
+    grid(handles.(hstr),'on');
+    axis(handles.(hstr),'tight')
+    set(handles.(hstr),'XTick',[0 10:10:f(end)],'box','off')
+    %     xlabel(handles.(hstr),'Frequency (Hz)')
+    %     ylabel(handles.(hstr),'Power/Frequency (dB/Hz)')
+
 end
 
 
@@ -626,6 +625,25 @@ function figure1_DeleteFcn(hObject, eventdata, handles)
 % hObject    handle to figure1 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+
+if isfield(handles,'intialized') && handles.intialized
+    if isfield(handles,'figIC')
+        try
+            close(handles.figIC.handle); end, end
+    if isfield(handles,'figLoc')
+        try
+            close(handles.figIC.handle); end, end
+
+    timerNames = {'eegTimer','oricaTimer','topoTimer','infoTimer','locTimer',[handles.streamName '_timer']};
+    % warning off MATLAB:timer:deleterunning
+    for it = 1:length(timerNames)
+        temp = timerfind('name',timerNames{it});
+        if isempty(temp)
+            continue; end
+        stop(temp)
+        delete(temp)
+    end
+end
 
 
 % --- Executes on mouse press over axes background.
