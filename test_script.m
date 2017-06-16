@@ -12,13 +12,13 @@ end
 % clear all will break bcilab and require it to restart as it uses global variables 
 timer = timerfindall;
 if ~isempty(timer)
-    stop(timerfindall); delete(timerfindall); end
+    stop(timerfindall); delete(timerfindall); disp('Delete timers...'); end
 close all
 clear
 
 %% define opts structure
 % whether to customize pipeline 
-opts.customize_pipeline = true;
+opts.customize_pipeline = false;
 
 % (optional) define config file name
 opts.config = 'Config_ORICA_EmotivEPOC'; %'Config_ORICA_SleepHeadband';

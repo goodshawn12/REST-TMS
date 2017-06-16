@@ -54,8 +54,9 @@ function REST_TMS_OpeningFcn(hObject, eventdata, handles, varargin)
 %            command line (see VARARGIN)
 
 % Set parameters
-handles.ntopo = 8;
-handles.curIC = 1; % cursor for PSD plot
+handles.nplots = 8;          % number of sources or channels to plot
+handles.isSourceMode = 0;   % flag for display mode: channel 0, source 1
+handles.isSwitched = 0;
 handles.lock = [];
 handles.color_lock = [0.5 1 0.5];
 handles.reject = [];
@@ -113,31 +114,28 @@ if any(strcmp(funsstr,'flt_selchans'))
     end
 end
 
-% Populate scalp maps
-for it = 1:handles.ntopo
-    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]))
-    [~,Zi,~,Xi,Yi,intx,inty] = topoplotFast_LRBF(rand(size(handles.chanlocs)), handles.chanlocs);
+if handles.isSourceMode
+    % Populate scalp maps
+    for it = 1:handles.nplots
+        set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)])); clf;
+        [~,Zi,~,Xi,Yi,intx,inty] = topoplotFast_LRBF(rand(size(handles.chanlocs)), handles.chanlocs);
+        set(handles.(['panelIC' int2str(it)]),'Title',['IC' int2str(handles.ics(it))])
+    end
+else
+    % Populate channel maps and scalp maps
+    for it = 1:handles.nplots
+        set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]))
+        topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','labelpoint');
+        set(handles.(['panelIC' int2str(it)]),'Title',handles.chanlocs(it).labels);
+    end
 end
-
-% Generate scalp map interpolation matrix (jerry rigged)
-nChan = length(handles.chanlocs);
-in = eye(nChan);
-out = zeros(32^2,nChan);
-for it = 1:nChan
-    op = rbfcreate(double([inty;intx]),in(:,it)','RBFFunction', 'linear');
-    out(:,it) = rbfinterp(double([Xi(:),Yi(:)]'), op);
-end
-handles.topoMat = out/in;
-handles.topoNaNMask = isnan(Zi);
-handles.topoNPixel = size(out,1);
-handles.topoMat(handles.topoNaNMask,:) = [];
 
 % Create scalp map timer
-topoTimer = timer('Period',round(1/handles.ntopo*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@vis_topo,hObject},'StartDelay',0.2,'Tag','topoTimer','Name','topoTimer');
+topoTimer = timer('Period',round(1/handles.nplots*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@vis_topo,hObject},'StartDelay',0.2,'Tag','topoTimer','Name','topoTimer');
 
 % Create data timer (starts as power spectrum)
 % infoTimer = timer('Period',1,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
-infoTimer = timer('Period',round(1/handles.ntopo*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
+infoTimer = timer('Period',round(1/handles.nplots*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
 
 % Set panel and button colors
 handles.color_bg = get(handles.figure1,'Color');
@@ -184,6 +182,13 @@ funs = [funs;{p.head}];
 
 function [handles, calibData, customize_pipeline] = startup_check_inputs(handles,in)
 % !!! need to add appropriate errors and explanations
+
+% set display mode
+if handles.isSourceMode
+    set(handles.uibuttonMode,'selectedobject',handles.radiobuttonIC);
+else
+    set(handles.uibuttonMode,'selectedobject',handles.radiobuttonCH);
+end
 
 % check channel locations
 if isfield(in{1},'chanlocs')
@@ -398,60 +403,63 @@ assignin('base','pipeline',pipeline);
 
 
 function vis_topo(varargin)
-% get the updated stream buffer
-W = evalin('base','pipeline.state.icaweights');
-sphere = evalin('base','pipeline.state.icasphere');
 
 % get handles
 handles = guidata(varargin{3});
 
-% update topo plot
-it = mod(get(varargin{1},'TasksExecuted')-1,handles.ntopo)+1;
-% if it==1
-%     updateICs(varargin{3}); end
+% update index
+it = mod(get(varargin{1},'TasksExecuted')-1,handles.nplots)+1;
 hstr = ['axesIC' int2str(it)];
 hand = get(handles.(hstr),'children');
 
-try
-    Winv = inv(W*sphere);
+if handles.isSourceMode     % display IC scalp maps
+    % get the updated stream buffer
+    W = evalin('base','pipeline.state.icaweights');
+    sphere = evalin('base','pipeline.state.icasphere');
+        
+    try
+        Winv = inv(W*sphere);
+        
+        %     [map, cmin, cmax] = topoplotUpdate(Winv(:,handles.ics(it)), handles.chanlocs,'electrodes','off','gridscale',32);
+        map = zeros(handles.topoNPixel,1);
+        map(~handles.topoNaNMask) = handles.topoMat*Winv(:,handles.ics(it));
+        maxabs = max(abs(map));
+        cmin = -maxabs;
+        cmax =  maxabs;
+        map(handles.topoNaNMask) = NaN;
+        map = reshape(map,sqrt(handles.topoNPixel),[]);
+        
+        surfInd = strcmp(get(hand,'type'),'surface');
+        set(hand(surfInd),'CData',map);
+        set(handles.(hstr),'CLim',[cmin cmax]);
+    end
     
-%     [map, cmin, cmax] = topoplotUpdate(Winv(:,handles.ics(it)), handles.chanlocs,'electrodes','off','gridscale',32);
-    map = zeros(handles.topoNPixel,1);
-    map(~handles.topoNaNMask) = handles.topoMat*Winv(:,handles.ics(it));
-    maxabs = max(abs(map));
-    cmin = -maxabs;
-    cmax =  maxabs;
-    map(handles.topoNaNMask) = NaN;
-    map = reshape(map,sqrt(handles.topoNPixel),[]);
-    
-    surfInd = strcmp(get(hand,'type'),'surface');
-    set(hand(surfInd),'CData',map);
-    set(handles.(hstr),'CLim',[cmin cmax]);
+    % update name and buttons
+    lock = any(handles.lock==handles.ics(it));
+    reject = any(handles.reject==handles.ics(it));
+    set(handles.(['panelIC' int2str(it)]),'Title',['IC' int2str(handles.ics(it))])
+    set(handles.(['togglebuttonLock' int2str(it)]),'Value',lock,...
+        'BackgroundColor',handles.color_lock*lock + handles.color_bg*(1-lock))
+    set(handles.(['togglebuttonReject' int2str(it)]),'Value',reject,...
+        'BackgroundColor',handles.color_reject*reject + handles.color_bg*(1-reject))
 end
-
-% update name and buttons
-lock = any(handles.lock==handles.ics(it));
-reject = any(handles.reject==handles.ics(it));
-set(handles.(['panelIC' int2str(it)]),'Title',['IC' int2str(handles.ics(it))])
-set(handles.(['togglebuttonLock' int2str(it)]),'Value',lock,...
-    'BackgroundColor',handles.color_lock*lock + handles.color_bg*(1-lock))
-set(handles.(['togglebuttonReject' int2str(it)]),'Value',reject,...
-    'BackgroundColor',handles.color_reject*reject + handles.color_bg*(1-reject))
 
 
 function infoPSD(varargin)
 
 % plot PSD of selected IC
 try  %#ok<*TRYNC>
-    secs2samp = 5; % seconds
-    
-    W = evalin('base','pipeline.state.icaweights');
-    % if isempty(W), W = evalin('base','Wn'); end
-    sphere = evalin('base','pipeline.state.icasphere');
     handles = guidata(varargin{3});
-        
     srate = evalin('base',[handles.bufferName '.srate']);
-    data = evalin('base',[handles.bufferName '.data{end}']); % !!! make this more robust
+    data = evalin('base',[handles.bufferName '.data{end}']); % FIXME: make this more robust
+
+    % parameters for computing PSD
+    dataLen = 5 * srate;        % seconds
+    windowLen = 2.5 * srate;      % seconds
+    noverlap = 2 * srate;    % seconds
+    nfft = 2^nextpow2(srate); 
+    
+    % select data
     if all(data(:,end)==0)
         mark=length(data);
         while true
@@ -459,24 +467,30 @@ try  %#ok<*TRYNC>
             if all(data(:,mark)~=0)
                 break; end
         end
-        data = data(:,max(1,mark-srate*secs2samp+1):mark);
+        data = data(:,max(1,mark-dataLen+1):mark);
     else
-        data = data(:,max(1,end-srate*secs2samp+1):end);
+        data = data(:,max(1,end-dataLen+1):end);
     end
     
     data = bsxfun(@minus,data,mean(data,2));
-    data = W*sphere*data;
     
-    % find index to be updated
-    it = mod(get(varargin{1},'TasksExecuted')-1,handles.ntopo)+1;
-    hstr = ['axes' int2str(it)];
+    if handles.isSourceMode
+        W = evalin('base','pipeline.state.icaweights');
+        sphere = evalin('base','pipeline.state.icasphere');
+        data = W*sphere*data;
+    end
 
-    data = data(it,:);    
-    [data,f] = pwelch(data,[],[],[],srate);
+    % find index to be updated
+    it = mod(get(varargin{1},'TasksExecuted')-1,handles.nplots)+1;
+    hstr = ['axes' int2str(it)];
+    data = data(it,:);
+    
+    % compute fft
+    [pxx,f] = pwelch(data,round(windowLen),round(noverlap),nfft,srate);
     
     maxFreq = 40;
     ind = f <= maxFreq;
-    plot(handles.(hstr),f(ind),db(data(ind))) % !!!?
+    plot(handles.(hstr),f(ind),db(pxx(ind))) % !!!?
     grid(handles.(hstr),'on');
     axis(handles.(hstr),'tight')
     set(handles.(hstr),'XTick',[0 10:10:f(end)],'box','off')
@@ -997,8 +1011,18 @@ function radiobuttonCH_Callback(hObject, eventdata, handles)
 % hObject    handle to radiobuttonCH (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+handles.isSourceMode = 0;
 
-% Hint: get(hObject,'Value') returns toggle state of radiobuttonCH
+% Populate channel maps
+% FIXME: does not always update all plots on Click. why?
+for it = 1:handles.nplots
+    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)])); cla;
+    topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','labelpoint');
+    set(handles.(['panelIC' int2str(it)]),'Title',handles.chanlocs(it).labels);
+end
+
+% Update handles structure
+guidata(hObject, handles);
 
 
 % --- Executes on button press in radiobuttonIC.
@@ -1006,8 +1030,30 @@ function radiobuttonIC_Callback(hObject, eventdata, handles)
 % hObject    handle to radiobuttonIC (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+handles.isSourceMode = 1;
 
-% Hint: get(hObject,'Value') returns toggle state of radiobuttonIC
+% Populate scalp maps
+for it = 1:handles.nplots
+    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)])); cla;
+    [~,Zi,~,Xi,Yi,intx,inty] = topoplotFast_LRBF(rand(size(handles.chanlocs)), handles.chanlocs);
+    set(handles.(['panelIC' int2str(it)]),'Title',['IC' int2str(handles.ics(it))])
+end
+
+% Generate scalp map interpolation matrix (jerry rigged)
+nChan = length(handles.chanlocs);
+in = eye(nChan);
+out = zeros(32^2,nChan);
+for it = 1:nChan
+    op = rbfcreate(double([inty;intx]),in(:,it)','RBFFunction', 'linear');
+    out(:,it) = rbfinterp(double([Xi(:),Yi(:)]'), op);
+end
+handles.topoMat = out/in;
+handles.topoNaNMask = isnan(Zi);
+handles.topoNPixel = size(out,1);
+handles.topoMat(handles.topoNaNMask,:) = [];
+
+% Update handles structure
+guidata(hObject, handles);
 
 
 % --- Executes on button press in pushbuttonViewStream.
