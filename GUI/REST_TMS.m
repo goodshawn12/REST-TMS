@@ -22,18 +22,18 @@ function varargout = REST_TMS(varargin)
 
 % Edit the above text to modify the response to help REST_TMS
 
-% Last Modified by GUIDE v2.5 13-Jun-2017 17:53:51
+% Last Modified by GUIDE v2.5 16-Jun-2017 17:57:30
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
 gui_State = struct('gui_Name',       mfilename, ...
-                   'gui_Singleton',  gui_Singleton, ...
-                   'gui_OpeningFcn', @REST_TMS_OpeningFcn, ...
-                   'gui_OutputFcn',  @REST_TMS_OutputFcn, ...
-                   'gui_LayoutFcn',  [], ...
-                   'gui_Callback',   []);
+    'gui_Singleton',  gui_Singleton, ...
+    'gui_OpeningFcn', @REST_TMS_OpeningFcn, ...
+    'gui_OutputFcn',  @REST_TMS_OutputFcn, ...
+    'gui_LayoutFcn',  [], ...
+    'gui_Callback',   []);
 if nargin && ischar(varargin{1})
-   gui_State.gui_Callback = str2func(varargin{1});
+    gui_State.gui_Callback = str2func(varargin{1});
 end
 
 if nargout
@@ -54,9 +54,10 @@ function REST_TMS_OpeningFcn(hObject, eventdata, handles, varargin)
 %            command line (see VARARGIN)
 
 % Set parameters
-handles.nplots = 8;          % number of sources or channels to plot
+handles.nplots = 8;         % number of sources or channels to plot
 handles.isSourceMode = 0;   % flag for display mode: channel 0, source 1
 handles.isSwitched = 0;
+handles.curIC = 1;          % IC index for source localization
 handles.lock = [];
 handles.color_lock = [0.5 1 0.5];
 handles.reject = [];
@@ -64,11 +65,11 @@ handles.color_reject = [1 0.5 0.5];
 
 % Parse varagin
 [handles,calibData,customize_pipeline] = startup_check_inputs(handles,varargin);
-    
+
 % Intialize ORICA
 handles = startup_initializeORICA(handles,calibData,customize_pipeline);
 
-% Create ORICA timer 
+% Create ORICA timer
 oricaTimer = timer('Period',.1,'ExecutionMode','fixedSpacing','TimerFcn',{@onl_filtered_ORICA,handles.streamName},'StartDelay',0.1,'Tag','oricaTimer','Name','oricaTimer');%,'BusyMode','queue');
 
 % Start EEG stream
@@ -135,7 +136,8 @@ topoTimer = timer('Period',round(1/handles.nplots*1000)/1000,'ExecutionMode','fi
 
 % Create data timer (starts as power spectrum)
 % infoTimer = timer('Period',1,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
-infoTimer = timer('Period',round(1/handles.nplots*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
+% infoTimer = timer('Period',round(1/handles.nplots*1000)/1000,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
+infoTimer = timer('Period',1,'ExecutionMode','fixedRate','TimerFcn',{@infoPSD,hObject},'StartDelay',0.2,'Tag','infoTimer','Name','infoTimer');
 
 % Set panel and button colors
 handles.color_bg = get(handles.figure1,'Color');
@@ -240,9 +242,9 @@ end
 
 % check whether to open pipeline arg_guipanel
 if isfield(in{1},'customize_pipeline')
-	customize_pipeline = in{1}.customize_pipeline;
+    customize_pipeline = in{1}.customize_pipeline;
 else
-	customize_pipeline = false;
+    customize_pipeline = false;
 end
 
 % check if config file is defined
@@ -257,9 +259,9 @@ end
 function handles = startup_check_localization(handles,in) % !!! combine headmodel in localization
 % if no headModel provided, remove localization button
 if ~isfield(in,'headModel') || isempty(in.headModel)
-    set(handles.pushbuttonLocalize,'HitTest','off','visible','off')
+    set(handles.pushbuttonLocalize,'string','Localize (off)')
     
-% if the provided headModel is a string, load the headModel
+    % if the provided headModel is a string, load the headModel
 elseif isa(in.headModel,'char')
     handles.headModel = headModel.loadFromFile(in.headModel);
     temp = load(handles.headModel.surfaces);
@@ -272,7 +274,7 @@ elseif isa(in.headModel,'char')
         [~,K,L,rmIndices] = getSourceSpace4PEB(handles.headModel);
         hmInd = setdiff(1:handles.nVertices,rmIndices);
         save([in.headModel '_SSPEB.mat'],'K','L','hmInd')
-
+        
         handles.K = K;
         handles.L = L;
         handles.hmInd = hmInd;
@@ -283,7 +285,10 @@ elseif isa(in.headModel,'char')
         handles.hmInd = temp.hmInd;
     end
     
-% if the provided headModel is an object, use it
+    if handles.isSourceMode
+        set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']); end
+
+    % if the provided headModel is an object, use it
 elseif isa(in.headModel,'headModel')
     handles.headModel = in.headModel;
     
@@ -305,6 +310,9 @@ elseif isa(in.headModel,'headModel')
         handles.L = in.L;
         handles.hmInd = in.hmInd;
     end
+    if handles.isSourceMode
+        set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']); end
+
 end
 
 
@@ -341,7 +349,13 @@ opts.lsl.StreamName = streamnames;
 % create learning rate buffer
 bufflen = 60; % seconds
 handles.srate = getfield(onl_peek(opts.lsl.StreamName,1,'samples'),'srate');
+handles.nbchan = getfield(onl_peek(opts.lsl.StreamName,1,'samples'),'nbchan');
 assignin('base','learning_rate',nan(1,bufflen*handles.srate));
+
+% set stream info in GUI
+set(handles.textStreamName,'string',streamnames);
+set(handles.textNumAll,'string',num2str(handles.nbchan));
+set(handles.textSrate,'string',[num2str(handles.srate) ' Hz']);
 
 % look for pre-existing config file for pipeline
 REST_path = fileparts(fileparts(which('REST')));
@@ -358,7 +372,7 @@ try
             'PanelOnly',false);
     end
 catch
-    disp('-- no existing pipeline or fail loading pipeline--'); 
+    disp('-- no existing pipeline or fail loading pipeline--');
     fltPipCfg = {};
 end
 
@@ -385,13 +399,16 @@ end
 
 % grab calib data from online stream if there is none
 if isempty(calibData)
-disp('Collecting calibration data from online stream... please wait 10 seconds...');
-pause(10-toc); % uh oh!
-calibData = onl_peek(opts.lsl.StreamName,10,'seconds');
+    disp('Collecting calibration data from online stream... please wait 10 seconds...');
+    pause(10-toc); % uh oh!
+    calibData = onl_peek(opts.lsl.StreamName,10,'seconds');
 end
 
 % check for bad channels
 calibData = warmStartWithBadChRemoved(calibData);
+
+% set number of EEG channels in GUI
+set(handles.textNumEEG,'string',num2str(calibData.nbchan));
 
 % run pipline on calibration data
 cleaned_data = exp_eval(flt_pipeline('signal',calibData,fltPipCfg));
@@ -416,7 +433,7 @@ if handles.isSourceMode     % display IC scalp maps
     % get the updated stream buffer
     W = evalin('base','pipeline.state.icaweights');
     sphere = evalin('base','pipeline.state.icasphere');
-        
+    
     try
         Winv = inv(W*sphere);
         
@@ -452,12 +469,12 @@ try  %#ok<*TRYNC>
     handles = guidata(varargin{3});
     srate = evalin('base',[handles.bufferName '.srate']);
     data = evalin('base',[handles.bufferName '.data{end}']); % FIXME: make this more robust
-
+    
     % parameters for computing PSD
     dataLen = 5 * srate;        % seconds
     windowLen = 2.5 * srate;      % seconds
     noverlap = 2 * srate;    % seconds
-    nfft = 2^nextpow2(srate); 
+    nfft = 2^nextpow2(srate);
     
     % select data
     if all(data(:,end)==0)
@@ -479,63 +496,64 @@ try  %#ok<*TRYNC>
         sphere = evalin('base','pipeline.state.icasphere');
         data = W*sphere*data;
     end
-
-    % find index to be updated
-    it = mod(get(varargin{1},'TasksExecuted')-1,handles.nplots)+1;
-    hstr = ['axes' int2str(it)];
-    data = data(it,:);
     
+    % FIXME: use online PSD estimation
     % compute fft
-    [pxx,f] = pwelch(data,round(windowLen),round(noverlap),nfft,srate);
-    
+    [pxx,f] = pwelch(data',round(windowLen),round(noverlap),nfft,srate);
     maxFreq = 40;
     ind = f <= maxFreq;
-    plot(handles.(hstr),f(ind),db(pxx(ind))) % !!!?
-    grid(handles.(hstr),'on');
-    axis(handles.(hstr),'tight')
-    set(handles.(hstr),'XTick',[0 10:10:f(end)],'box','off')
-    %     xlabel(handles.(hstr),'Frequency (Hz)')
-    %     ylabel(handles.(hstr),'Power/Frequency (dB/Hz)')
-
+    
+    % update all plots
+    for it = 1:handles.nplots
+        hstr = ['axes' int2str(it)];
+        plot(handles.(hstr),f(ind),db(pxx(ind,it))) % !!!?
+        grid(handles.(hstr),'on');
+        axis(handles.(hstr),'tight')
+        set(handles.(hstr),'XTick',[0 10:10:f(end)],'box','off')
+        %     xlabel(handles.(hstr),'Frequency (Hz)')
+        %     ylabel(handles.(hstr),'Power/Frequency (dB/Hz)')
+    end
+    
 end
 
 
 
 function genICSelectGUI(hObject,handles)
-temp = get(handles.figure1,'Position');
-fhandle = figure('toolbar','none','Menubar','none','Name','IC Select','position',[1 1 temp(3:4)],'Resize','on','Colormap',colormap('jet'),'DeleteFcn',{@closeFigIC,hObject});
-W = evalin('base','pipeline.state.icaweights');
-sphere = evalin('base','pipeline.state.icasphere');
-Winv = inv(W*sphere);
-
-rowcols(2) = ceil(sqrt(handles.nic));
-rowcols(1) = ceil(handles.nic/rowcols(2));
-scaleMatTopo = [1 0 0 0;0 1 0 0;0 0 1 0;0 .2 0 .8];
-buttonGap = .1;
-scaleMatReject = [1 0 0 0;0 1 0 0;0 0 .5-buttonGap/2 0;.5+buttonGap/2 0 0 .2];
-for it = 1:handles.nic
-    h(it) = subaxis(rowcols(1),rowcols(2),it,'MR',.025,'ML',.025,'MT',.025,'MB',.025,'SH',0,'SV',0.02);
-    tempPos = get(h(it),'Position');
-    set(h(it),'position',get(h(it),'position')*scaleMatTopo)
-    topoplotFast_LRBF(Winv(:,it),handles.chanlocs);
-    title(['IC' int2str(it)])
+if handles.isSourceMode
+    temp = get(handles.figure1,'Position');
+    fhandle = figure('toolbar','none','Menubar','none','Name','Select IC','position',[1 1 temp(3:4)],'Resize','on','Colormap',colormap('jet'),'DeleteFcn',{@closeFigIC,hObject});
+    W = evalin('base','pipeline.state.icaweights');
+    sphere = evalin('base','pipeline.state.icasphere');
+    Winv = inv(W*sphere);
     
-    lock = any(handles.lock==it);
-    reject = any(handles.reject==it);
-    buttonLock(it) = uicontrol('Style', 'togglebutton', 'String', 'Lock',...
-        'Units','normalize','Position', tempPos.*[1 1 .5-buttonGap/2 .2],...
-        'Callback', {@lockIC,it,hObject},'Value',lock,...
-        'BackgroundColor',handles.color_lock*lock + handles.color_bg*(1-lock));
-    buttonReject(it) = uicontrol('Style', 'togglebutton', 'String', 'Reject',...
-        'Units','normalize','Position', tempPos*scaleMatReject,...
-        'Callback', {@rejectIC,it,hObject},'Value',reject,...
-        'BackgroundColor',handles.color_reject*reject + handles.color_bg*(1-reject));
+    rowcols(2) = ceil(sqrt(handles.nic));
+    rowcols(1) = ceil(handles.nic/rowcols(2));
+    scaleMatTopo = [1 0 0 0;0 1 0 0;0 0 1 0;0 .2 0 .8];
+    buttonGap = .1;
+    scaleMatReject = [1 0 0 0;0 1 0 0;0 0 .5-buttonGap/2 0;.5+buttonGap/2 0 0 .2];
+    for it = 1:handles.nic
+        h(it) = subaxis(rowcols(1),rowcols(2),it,'MR',.025,'ML',.025,'MT',.025,'MB',.025,'SH',0,'SV',0.02);
+        tempPos = get(h(it),'Position');
+        set(h(it),'position',get(h(it),'position')*scaleMatTopo)
+        topoplotFast_LRBF(Winv(:,it),handles.chanlocs);
+        title(['IC' int2str(it)])
+        
+        lock = any(handles.lock==it);
+        reject = any(handles.reject==it);
+        buttonLock(it) = uicontrol('Style', 'togglebutton', 'String', 'Lock',...
+            'Units','normalize','Position', tempPos.*[1 1 .5-buttonGap/2 .2],...
+            'Callback', {@lockIC,it,hObject},'Value',lock,...
+            'BackgroundColor',handles.color_lock*lock + handles.color_bg*(1-lock));
+        buttonReject(it) = uicontrol('Style', 'togglebutton', 'String', 'Reject',...
+            'Units','normalize','Position', tempPos*scaleMatReject,...
+            'Callback', {@rejectIC,it,hObject},'Value',reject,...
+            'BackgroundColor',handles.color_reject*reject + handles.color_bg*(1-reject));
+    end
+    handles.figIC.buttonLock = buttonLock;
+    handles.figIC.buttonReject = buttonReject;
+    handles.figIC.handle = fhandle;
 end
-handles.figIC.buttonLock = buttonLock;
-handles.figIC.buttonReject = buttonReject;
-handles.figIC.handle = fhandle;
 guidata(hObject,handles);
-
 
 
 function closeFigIC(varargin)
@@ -647,7 +665,7 @@ if isfield(handles,'intialized') && handles.intialized
     if isfield(handles,'figLoc')
         try
             close(handles.figIC.handle); end, end
-
+    
     timerNames = {'eegTimer','oricaTimer','topoTimer','infoTimer','locTimer',[handles.streamName '_timer']};
     % warning off MATLAB:timer:deleterunning
     for it = 1:length(timerNames)
@@ -660,11 +678,6 @@ if isfield(handles,'intialized') && handles.intialized
 end
 
 
-% --- Executes on mouse press over axes background.
-function axesIC1_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC1 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in pushbuttonSelect.
@@ -672,6 +685,18 @@ function pushbuttonSelect_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbuttonSelect (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if isfield(handles,'figIC')
+    figure(handles.figIC.handle)
+    return
+end
+
+if strcmpi(get(handles.pushbuttonPause,'string'),'Resume')
+    genICSelectGUI(hObject,handles)
+else
+    stop(handles.pauseTimers)
+    genICSelectGUI(hObject,handles)
+    start(handles.pauseTimers)
+end
 
 
 % --- Executes on button press in pushbuttonPause.
@@ -679,6 +704,13 @@ function pushbuttonPause_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbuttonPause (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if strcmpi(get(handles.pushbuttonPause,'string'),'Pause')
+    set(handles.pushbuttonPause,'string','Resume');
+    stop(handles.pauseTimers)
+else
+    set(handles.pushbuttonPause,'string','Pause');
+    start(handles.pauseTimers);
+end
 
 
 % --- Executes on button press in pushbuttonLocalize.
@@ -687,12 +719,280 @@ function pushbuttonLocalize_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
+if handles.isSourceMode
+    % if no existing headModel, return
+    if ~isfield(handles,'headModel') || isempty(handles.headModel)
+        disp('No existing headModel')
+        return
+    end
+    
+    % if it already exists then just focus on it
+    if isfield(handles,'figLoc')
+        figure(handles.figLoc.handle.hFigure)
+        return
+    end
+    
+    % otherwise pause if necessary and then create the window
+    method =  questdlg('Choose method for source Localization','Localization', ...
+        'LORETA','Dipole Fit','LORETA');
+    
+    flag_resume = false;
+    if strcmpi(get(handles.pushbuttonPause,'string'),'Pause')
+        stop(handles.pauseTimers);
+        flag_resume = true;
+    end
+    
+    switch method
+        case 'LORETA'
+            figLoc_gen_LORETA(hObject,handles)
+        case 'Dipole Fit'
+            figLoc_gen_dipolefit(hObject,handles)
+    end
+    
+    if flag_resume %#ok<*ALIGN>
+        handles = guidata(hObject);
+        start(handles.pauseTimers); 
+    end
+    
+else
+    disp('Source localization is only supported in the Source Mode.')
+end
 
-% --- Executes on mouse press over axes background.
-function axesIC2_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC2 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
+
+function figLoc_gen_LORETA(hObject,handles)
+% get ica decomposition
+W = evalin('base','pipeline.state.icaweights');
+sphere = evalin('base','pipeline.state.icasphere');
+Winv = inv(W*sphere);
+
+% run dynamicLoreta once to generate state and initial localization
+[U,S,V] = svd(handles.K/handles.L,'econ');
+Ut = U';
+s2 = diag(S).^2;
+iLV = handles.L\V;
+options = struct('maxTol',1e-3,'maxIter',100,'gridSize',100,'verbose',false,'history',true,'useGPU',false,'initNoiseFactor',0.001);
+[J,sigma2,tau2] = dynamicLoreta(Winv(:,handles.curIC), Ut, s2,iLV,[],[], options);
+
+% create headModel plot
+if length(handles.hmInd) == length(J)
+    Jest = zeros(handles.nVertices,1);
+    Jest(handles.hmInd,:) = J;
+else
+    Jest = zeros(handles.nVertices,3);
+    Jest(handles.hmInd,:) = reshape(J,[],3);
+end
+fhandle = handles.headModel.plotOnModel(Jest(:),Winv(:,handles.curIC),sprintf('IC %d Localization (LORETA)',handles.curIC));
+set(fhandle.hFigure,'DeleteFcn',{@closeFigLoc,hObject},'name',['IC' num2str(handles.curIC)]);
+colorbar('hide');
+
+% create timer
+locTimer = timer('Period',3,'StartDelay',3,'ExecutionMode','fixedRate','TimerFcn',{@figLoc_update_LORETA,hObject},'Tag','locTimer','Name','locTimer');
+
+% save headModel plot, timer, and dynamicLoreta parameters to handles
+handles.pauseTimers = [handles.pauseTimers,locTimer];
+handles.figLoc.handle = fhandle;
+handles.figLoc.IC = handles.curIC;
+handles.figLoc.Ut = Ut;
+handles.figLoc.s2 = s2;
+handles.figLoc.iLV = iLV;
+handles.figLoc.tau2 = tau2;
+handles.figLoc.sigma2 = sigma2;
+handles.figLoc.options = options;
+temp = load(handles.headModel.surfaces);
+handles.figLoc.scalp = geometricTools.localGaussianInterpolator(handles.headModel.channelSpace,temp.surfData(1).vertices,32);
+if range(handles.figLoc.scalp)<.5
+    handles.figLoc.scalp = geometricTools.localGaussianInterpolator(handles.headModel.channelSpace,temp.surfData(1).vertices,32/1000);
+end
+guidata(hObject,handles);
+
+
+
+function figLoc_update_LORETA(varargin)
+% get ica decomposition
+W = evalin('base','pipeline.state.icaweights');
+sphere = evalin('base','pipeline.state.icasphere');
+Winv = inv(W*sphere);
+
+% parse inputs
+handles = guidata(varargin{3});
+
+% run dynamicLoreta
+Ut = handles.figLoc.Ut;
+s2 = handles.figLoc.s2;
+iLV = handles.figLoc.iLV;
+tau2 = handles.figLoc.tau2;
+sigma2 = handles.figLoc.sigma2;
+options = handles.figLoc.options;
+[J,sigma2,tau2] = dynamicLoreta(Winv(:,handles.figLoc.IC), Ut, s2,iLV,sigma2,tau2, options);
+
+% update figure and related object values
+if length(handles.hmInd) == length(J)
+    Jest = zeros(handles.nVertices,1);
+    Jest(handles.hmInd) = J;
+    handles.figLoc.handle.sourceMagnitud = Jest;
+    set(handles.figLoc.handle.hCortex,'FaceVertexCData',handles.figLoc.handle.sourceMagnitud)
+else
+    Jest = zeros(handles.nVertices,3);
+    Jest(handles.hmInd,:) = reshape(J,[],3);
+    handles.figLoc.handle.sourceOrientation = Jest;
+    handles.figLoc.handle.sourceMagnitud = squeeze(sqrt(sum(Jest.^2,2)));
+    set(handles.figLoc.handle.hVector,'udata',Jest(:,1),'vdata',Jest(:,2),'wdata',Jest(:,3))
+    set(handles.figLoc.handle.hCortex,'FaceVertexCData',handles.figLoc.handle.sourceMagnitud)
+end
+scalp_val = handles.figLoc.scalp*Winv(:,handles.figLoc.IC);
+set(handles.figLoc.handle.hScalp,'FaceVertexCData',scalp_val)
+
+% upade color limits
+maxabs = max(abs(scalp_val));
+handles.figLoc.handle.clim.scalp = [-maxabs maxabs];
+maxabs = max(abs(handles.figLoc.handle.sourceMagnitud));
+handles.figLoc.handle.clim.source = [-maxabs maxabs];
+
+
+% save dynamicLoreta parameters to handles
+handles.figLoc.tau2 = tau2;
+handles.figLoc.sigma2 = sigma2;
+guidata(varargin{3},handles);
+
+
+
+function figLoc_gen_dipolefit(hObject,handles)
+% get ica decomposition
+W = evalin('base','pipeline.state.icaweights');
+sphere = evalin('base','pipeline.state.icasphere');
+Winv = inv(W*sphere);
+
+% load surfaces
+sd = load(handles.headModel.surfaces);
+vertices = sd.surfData(3).vertices(handles.hmInd,:);
+
+% calculate scalp potential transform and guess units
+scalp = geometricTools.localGaussianInterpolator(handles.headModel.channelSpace,sd.surfData(1).vertices,32);
+if range(scalp)<.5
+    scalp = geometricTools.localGaussianInterpolator(handles.headModel.channelSpace,sd.surfData(1).vertices,32/1000);
+end
+
+% create figure and dipole plot
+fhandle = handles.headModel.plotDipoles([0 0 0],[0 0 0]);
+set(fhandle.hFigure,'DeleteFcn',{@closeFigLoc,hObject},'name',['IC' num2str(handles.curIC)]);
+hold(fhandle.hAxes,'on');
+
+% dipole fit
+[dipoles, ~, moments, rv, state] = dipole_fit(Winv(:,handles.curIC),handles.K,vertices);
+
+% set scalp potentials
+set(fhandle.hScalp,'FaceVertexCData',scalp*Winv(:,handles.curIC),'facecolor','interp')
+
+% plot dipole
+arrowlen = max(range(sd.surfData(3).vertices))/10;
+if length(moments)/3==length(vertices)
+    dipoles.moment = dipoles.moment/norm(dipoles.moment)*arrowlen;
+    handles.figLoc.fixed_dip = false;
+    arrows_dip = quiver3(dipoles.location(1),dipoles.location(2),dipoles.location(3), ...
+        dipoles.moment(1),dipoles.moment(2),dipoles.moment(3),'ko','filled');
+else
+    handles.figLoc.fixed_dip = true;
+    normals = geometricTools.getSurfaceNormals(sd.surfData(end).vertices,sd.surfData(end).faces,false);
+    arrows_dip = quiver3(dipoles.location(1),dipoles.location(2),dipoles.location(3), ...
+        normals(dipoles.L,1)*arrowlen,normals(dipoles.L,2)*arrowlen,normals(dipoles.L,3)*arrowlen,'ko','filled');
+end
+colormap(bipolar(512, 0.99))
+maxabs = max(abs(vec(scalp*Winv(:,handles.curIC))));
+caxis(fhandle.hAxes,[-maxabs maxabs]);
+
+% create residual variance text
+handles.figLoc.axisRV = axes('parent',fhandle.hFigure,'position',[.05 .9 .3 .1],'hittest','off');
+axis(handles.figLoc.axisRV,'off')
+handles.figLoc.textRV = text(0,0.5,sprintf('Residual Variance: %04.1f%%',rv*100), ...
+    'parent',handles.figLoc.axisRV,'fontweight','bold','fontsize',16,'hittest','off');
+
+% create timer
+locTimer = timer('Period',3,'StartDelay',3,'ExecutionMode','fixedRate', ...
+    'TimerFcn',{@figLoc_update_dipolefit,hObject},'Tag','locTimer','Name','locTimer');
+
+% save headModel plot, timer, and bfpf state to handles
+handles.figLoc.state = state;
+handles.pauseTimers = [handles.pauseTimers,locTimer];
+handles.figLoc.handle = fhandle;
+handles.figLoc.IC = handles.curIC;
+handles.figLoc.arrows_dip = arrows_dip;
+handles.figLoc.scalp = scalp;
+handles.figLoc.arrowlen = arrowlen;
+if handles.figLoc.fixed_dip
+    handles.figLoc.normals = normals; end
+guidata(hObject,handles);
+
+
+
+function figLoc_update_dipolefit(varargin)
+% get ica decomposition
+W = evalin('base','pipeline.state.icaweights');
+sphere = evalin('base','pipeline.state.icasphere');
+Winv = inv(W*sphere);
+
+% parse inputs
+handles = guidata(varargin{3});
+if handles.figLoc.fixed_dip
+    normals = handles.figLoc.normals; end
+
+% load surfaces
+temp = load(handles.headModel.surfaces);
+vertices = temp.surfData(3).vertices(handles.hmInd,:);
+
+% update dipole
+[dipoles, ~, ~, rv, handles.figLoc.state] = ...
+    dipole_fit(Winv(:,handles.figLoc.IC),handles.K,vertices,handles.figLoc.state);
+
+% update dipole plot
+if ~handles.figLoc.fixed_dip
+    dipoles.moment = dipoles.moment/norm(dipoles.moment)*handles.figLoc.arrowlen;
+    set(handles.figLoc.arrows_dip, ...
+        'XData',dipoles.location(1), ...
+        'YData',dipoles.location(2), ...
+        'ZData',dipoles.location(3), ...
+        'UData',dipoles.moment(1), ...
+        'VData',dipoles.moment(2), ...
+        'WData',dipoles.moment(3));
+else
+    set(handles.figLoc.arrows_dip, ...
+        'XData',dipoles.location(1), ...
+        'YData',dipoles.location(2), ...
+        'ZData',dipoles.location(3), ...
+        'UData',normals(dipoles.L,1)*handles.figLoc.arrowlen, ...
+        'VData',normals(dipoles.L,2)*handles.figLoc.arrowlen, ...
+        'WData',normals(dipoles.L,3)*handles.figLoc.arrowlen);
+end
+
+% update scalp plot
+set(handles.figLoc.handle.hScalp,'FaceVertexCData', ...
+    handles.figLoc.scalp*Winv(:,handles.figLoc.IC))
+maxabs = max(abs(vec(handles.figLoc.scalp*Winv(:,handles.figLoc.IC))));
+caxis(handles.figLoc.handle.hAxes,[-maxabs maxabs]);
+
+% update RV text
+set(handles.figLoc.textRV,'string',sprintf('Residual Variance: %04.1f%%',rv*100));
+
+
+
+function closeFigLoc(varargin)
+hObject = varargin{3};
+
+% load handles
+handles = guidata(hObject);
+
+% delete figure handle from handles
+if isfield(handles,'figLoc')
+    handles = rmfield(handles,'figLoc'); end
+
+% delete timer and remove from pauseTimers
+locTimerInd = strcmp(get(handles.pauseTimers,'Name'),'locTimer');
+stop(handles.pauseTimers(locTimerInd));
+delete(handles.pauseTimers(locTimerInd));
+handles.pauseTimers(locTimerInd) = [];
+
+% save handles
+guidata(hObject,handles);
+
 
 
 % --- Executes on button press in togglebuttonLock2.
@@ -782,6 +1082,101 @@ function pushbuttonSortICs_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbuttonSortICs (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    updateICs(hObject,true); end
+
+
+
+
+% --- Executes on mouse press over axes background.
+function axesIC1_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(1);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC2_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(2);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC3_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(3);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC4_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC4 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(4);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC5_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC5 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(5);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC6_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC6 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(6);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function axesIC7_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to axesIC7 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(7);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
 
 
 % --- Executes on mouse press over axes background.
@@ -789,6 +1184,14 @@ function axesIC8_ButtonDownFcn(hObject, eventdata, handles)
 % hObject    handle to axesIC8 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if handles.isSourceMode
+    handles.curIC = handles.ics(8);
+    set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+end
+% Update handles structure
+guidata(hObject, handles);
+
+
 
 
 % --- Executes on button press in togglebuttonReject8.
@@ -809,11 +1212,6 @@ function togglebuttonLock8_Callback(hObject, eventdata, handles)
 % Hint: get(hObject,'Value') returns toggle state of togglebuttonLock8
 
 
-% --- Executes on mouse press over axes background.
-function axesIC7_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC7 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in togglebuttonReject7.
@@ -834,11 +1232,6 @@ function togglebuttonLock7_Callback(hObject, eventdata, handles)
 % Hint: get(hObject,'Value') returns toggle state of togglebuttonLock7
 
 
-% --- Executes on mouse press over axes background.
-function axesIC6_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC6 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in togglebuttonReject6.
@@ -859,11 +1252,6 @@ function togglebuttonLock6_Callback(hObject, eventdata, handles)
 % Hint: get(hObject,'Value') returns toggle state of togglebuttonLock6
 
 
-% --- Executes on mouse press over axes background.
-function axesIC5_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC5 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in togglebuttonReject5.
@@ -884,11 +1272,6 @@ function togglebuttonLock5_Callback(hObject, eventdata, handles)
 % Hint: get(hObject,'Value') returns toggle state of togglebuttonLock5
 
 
-% --- Executes on mouse press over axes background.
-function axesIC4_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC4 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in togglebuttonReject4.
@@ -909,11 +1292,6 @@ function togglebuttonLock4_Callback(hObject, eventdata, handles)
 % Hint: get(hObject,'Value') returns toggle state of togglebuttonLock4
 
 
-% --- Executes on mouse press over axes background.
-function axesIC3_ButtonDownFcn(hObject, eventdata, handles)
-% hObject    handle to axesIC3 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
 % --- Executes on button press in togglebuttonReject3.
@@ -1014,12 +1392,17 @@ function radiobuttonCH_Callback(hObject, eventdata, handles)
 handles.isSourceMode = 0;
 
 % Populate channel maps
-% FIXME: does not always update all plots on Click. why?
 for it = 1:handles.nplots
-    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)])); cla;
+    set(handles.(['axesIC' int2str(it)]),'NextPlot','add');
+    cla(handles.(['axesIC' int2str(it)]));
+    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]));
     topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','labelpoint');
+end
+for it = 1:handles.nplots
     set(handles.(['panelIC' int2str(it)]),'Title',handles.chanlocs(it).labels);
 end
+
+set(handles.pushbuttonLocalize,'string','Localize');
 
 % Update handles structure
 guidata(hObject, handles);
@@ -1034,7 +1417,9 @@ handles.isSourceMode = 1;
 
 % Populate scalp maps
 for it = 1:handles.nplots
-    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)])); cla;
+    set(handles.(['axesIC' int2str(it)]),'NextPlot','add');
+    cla(handles.(['axesIC' int2str(it)]));
+    set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]));
     [~,Zi,~,Xi,Yi,intx,inty] = topoplotFast_LRBF(rand(size(handles.chanlocs)), handles.chanlocs);
     set(handles.(['panelIC' int2str(it)]),'Title',['IC' int2str(handles.ics(it))])
 end
@@ -1052,6 +1437,8 @@ handles.topoNaNMask = isnan(Zi);
 handles.topoNPixel = size(out,1);
 handles.topoMat(handles.topoNaNMask,:) = [];
 
+set(handles.pushbuttonLocalize,'string',['Localize (IC ' int2str(handles.curIC) ')']);
+
 % Update handles structure
 guidata(hObject, handles);
 
@@ -1061,3 +1448,4 @@ function pushbuttonViewStream_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbuttonViewStream (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+

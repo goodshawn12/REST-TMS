@@ -28,7 +28,7 @@ opts.config = 'Config_ORICA_EmotivEPOC'; %'Config_ORICA_SleepHeadband';
 % opts.chanlocs = chanlocs;
 
 % (optional) point to headModel
-opts.headModel = ['data' filesep 'head_models' filesep 'quick20HeadModel'];
+opts.headModel = ['data' filesep 'head_models' filesep 'emotivHeadModel_file']; % quick20HeadModel
 
 % (optional) path to calibration data and select time window
 opts.calibration_data = ['data' filesep 'Demo_EmotivEPOC_EyeClose.set']; % sleepBand_sample.set
