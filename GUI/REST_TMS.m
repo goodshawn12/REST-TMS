@@ -126,7 +126,8 @@ else
     % Populate channel maps and scalp maps
     for it = 1:handles.nplots
         set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]))
-        topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','labelpoint');
+        topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','on', ...
+            'electcolor',[1 0 0],'emarkersize',20);
         set(handles.(['panelIC' int2str(it)]),'Title',handles.chanlocs(it).labels);
     end
 end
@@ -408,7 +409,11 @@ end
 calibData = warmStartWithBadChRemoved(calibData);
 
 % set number of EEG channels in GUI
-set(handles.textNumEEG,'string',num2str(calibData.nbchan));
+if isfield(fltPipCfg,'pselchans') && ~isempty(fltPipCfg.pselchans.channels)
+    set(handles.textNumEEG,'string',num2str(calibData.nbchan - length(fltPipCfg.pselchans.channels)));
+else
+    set(handles.textNumEEG,'string',num2str(calibData.nbchan));
+end
 
 % run pipline on calibration data
 cleaned_data = exp_eval(flt_pipeline('signal',calibData,fltPipCfg));
@@ -1396,7 +1401,8 @@ for it = 1:handles.nplots
     set(handles.(['axesIC' int2str(it)]),'NextPlot','add');
     cla(handles.(['axesIC' int2str(it)]));
     set(handles.figure1, 'CurrentAxes', handles.(['axesIC' int2str(it)]));
-    topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','labelpoint');
+    topoplotCH([],handles.chanlocs(it), 'style', 'blank', 'electrodes','on', ...
+        'electcolor',[1 0 0],'emarkersize',20);
 end
 for it = 1:handles.nplots
     set(handles.(['panelIC' int2str(it)]),'Title',handles.chanlocs(it).labels);
