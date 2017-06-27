@@ -93,7 +93,7 @@ handles.color_reject = [1 0.5 0.5];
 handles = startup_initializeORICA(handles,calibData,customize_pipeline);
 
 % Create ORICA timer 
-oricaTimer = timer('Period',.1,'ExecutionMode','fixedSpacing','TimerFcn',{@onl_filtered_ORICA,handles.streamName},'StartDelay',0.1,'Tag','oricaTimer','Name','oricaTimer');%,'BusyMode','queue');
+oricaTimer = timer('Period',.1,'ExecutionMode','fixedSpacing','TimerFcn',{@onl_filtered_ORICA,parseStreamName(handles.streamName)},'StartDelay',0.1,'Tag','oricaTimer','Name','oricaTimer');%,'BusyMode','queue');
 
 % Start EEG stream
 [~, handles.bufferName] = vis_stream_ORICA('figurehandles',handles.figure1,'axishandles',handles.axisEEG,'streamname',handles.streamName);
@@ -350,9 +350,8 @@ else
     streamnames = streamnames{1};
 end
 run_readlsl_ORICA('MatlabStream',streamnames,'DataStreamQuery', ['name=''' streamnames '''']);
-if ~isvarname(streamnames), streamnames = streamnames(~ismember(streamnames,['-' ' '])); end
 handles.streamName = streamnames;
-opts.lsl.StreamName = streamnames;
+opts.lsl.StreamName = parseStreamName(streamnames);
 
 % create learning rate buffer
 bufflen = 60; % seconds
@@ -1040,7 +1039,7 @@ switch contents{get(handles.popupmenuInfo,'Value')}
         % if so...
         stop(infoTimer)
         learning_rate = evalin('base','learning_rate');
-        srate = evalin('base',[handles.streamName '.srate']);
+        srate = evalin('base',[parseStreamName(handles.streamName) '.srate']);
         x = -(length(learning_rate)-1)/srate:1/srate:0;
         axes(handles.axisInfo)
         [handles.axisInfo] = plot(x,learning_rate);
@@ -1329,7 +1328,7 @@ if isfield(handles,'intialized') && handles.intialized
         try
             close(handles.figIC.handle); end, end
 
-    timerNames = {'eegTimer','oricaTimer','topoTimer','infoTimer','locTimer',[handles.streamName '_timer']};
+    timerNames = {'eegTimer','oricaTimer','topoTimer','infoTimer','locTimer',[parseStreamName(handles.streamName) '_timer']};
     % warning off MATLAB:timer:deleterunning
     for it = 1:length(timerNames)
         temp = timerfind('name',timerNames{it});
@@ -1348,4 +1347,13 @@ function pushbuttonSortICs_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 updateICs(hObject,true)
+end
+
+
+% utility functions
+% parse streamname
+function streamnames = parseStreamName(streamnames)
+if ~isvarname(streamnames)
+    streamnames = streamnames(~ismember(streamnames,['-' ' ']));
+end
 end
